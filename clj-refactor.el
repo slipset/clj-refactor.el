@@ -2184,9 +2184,10 @@ FEATURE is either :clj or :cljs."
 (defun cljr--magic-requires-lookup-alias ()
   "Return (alias (ns.candidate1 ns.candidate1)) if we recognize
 the alias in the project."
-  (let ((short (buffer-substring-no-properties
-                (cljr--point-after 'paredit-backward)
-                (1- (point)))))
+  (let ((short (->> (buffer-substring-no-properties
+                     (cljr--point-after 'paredit-backward)
+                     (1- (point)))
+                    (s-chop-prefix "::"))))
     (unless (or (cljr--resolve-alias short)
                 (cljr--is-global-alias short))
       (-if-let* ((aliases (ignore-errors (cljr--get-aliases-from-middleware)))
@@ -2198,6 +2199,12 @@ the alias in the project."
           ;; isn't perfect.
           (-when-let (long (cljr--aget cljr-magic-require-namespaces short))
             (list short (list long))))))))
+
+(defun cljr--in-sans-ns-keyword-p ()
+  (cljr--sans-ns-keyword?
+   (buffer-substring-no-properties
+    (cljr--point-after 'paredit-backward)
+    (1- (point)))))
 
 ;;;###autoload
 (defun cljr-slash ()
@@ -2211,6 +2218,7 @@ form."
   (-when-let (aliases (and cljr-magic-requires
                            (not (cider-in-comment-p))
                            (not (cider-in-string-p))
+                           (not (cljr--in-sans-ns-keyword-p))
                            (clojure-find-ns)
                            (cljr--magic-requires-lookup-alias)))
     (let ((short (first aliases)))
@@ -3502,7 +3510,7 @@ argument of a `reduce', the defn will take two arguments.
 
 See: https://github.com/clojure-emacs/clj-refactor.el/wiki/cljr-create-fn-from-example"
   (interactive)
-  (while (cljr--is-keyword? (car (cljr--extract-sexp-as-list)))
+  (while (cljr--sans-ns-keyword? (car (cljr--extract-sexp-as-list)))
     (paredit-backward-up))
   (let* ((sexp-forms* (cljr--extract-sexp-as-list))
          (fn-name (car sexp-forms*))
@@ -3583,7 +3591,7 @@ See: https://github.com/clojure-emacs/clj-refactor.el/wiki/cljr-create-fn-from-e
 (defun cljr--create-fn-from-update (args path)
   (let ((keyfn (cadr args)))
     (cljr--insert-example-fn (cider-symbol-at-point)
-                             (if (cljr--is-keyword? keyfn)
+                             (if (cljr--sans-ns-keyword? keyfn)
                                  (list (s-chop-prefix ":" keyfn))
                                (list 0))
                              path)))
@@ -3593,7 +3601,7 @@ See: https://github.com/clojure-emacs/clj-refactor.el/wiki/cljr-create-fn-from-e
                            (paredit-backward-down)
                            (cider-symbol-at-point))))
     (cljr--insert-example-fn (cider-symbol-at-point)
-                             (if (cljr--is-keyword? last-path-entry)
+                             (if (cljr--sans-ns-keyword? last-path-entry)
                                  (list (s-chop-prefix ":" last-path-entry))
                                (list 0))
                              path)))
@@ -3614,7 +3622,7 @@ See: https://github.com/clojure-emacs/clj-refactor.el/wiki/cljr-create-fn-from-e
          (making-comparator? (and (string= fn-name (cadr args))
                                   (= 3 (length args))))
          (param-name (if making-comparator?
-                         (when (cljr--is-keyword? (car args))
+                         (when (cljr--sans-ns-keyword? (car args))
                            (s-chop-prefix ":" (car args)))
                        (-when-let (coll-name (cljr--guess-param-name (-last-item args)))
                          (singularize-string coll-name)))))
@@ -3653,7 +3661,7 @@ See: https://github.com/clojure-emacs/clj-refactor.el/wiki/cljr-create-fn-from-e
         (buffer-substring (point-min) (point-max)))
     s))
 
-(defun cljr--is-keyword? (s)
+(defun cljr--sans-ns-keyword? (s)
   (s-matches? "^:[^0-9:[{(\"][^[{(\"]*$"
               (s-replace "\n" " " s)))
 
@@ -3756,7 +3764,7 @@ See: https://github.com/clojure-emacs/clj-refactor.el/wiki/cljr-create-fn-from-e
                            (paredit-forward 3)
                            (paredit-backward-down)
                            (cider-symbol-at-point))))
-    (when (cljr--is-keyword? last-path-entry)
+    (when (cljr--sans-ns-keyword? last-path-entry)
       (s-chop-prefix ":" last-path-entry))))
 
 (defun cljr--find-param-name-from-get (form)
@@ -3765,7 +3773,7 @@ See: https://github.com/clojure-emacs/clj-refactor.el/wiki/cljr-create-fn-from-e
                (paredit-forward 2)
                (cljr--skip-past-whitespace-and-comments)
                (cljr--extract-sexp))))
-    (when (cljr--is-keyword? key)
+    (when (cljr--sans-ns-keyword? key)
       (s-chop-prefix ":" key))))
 
 (defun cljr--insert-example-fn (name args path)
